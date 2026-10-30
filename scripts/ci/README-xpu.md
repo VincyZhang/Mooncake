@@ -1,5 +1,13 @@
 # Intel XPU CI
 
+> **Temporary fork-only validation:** `ci/xpu-wheel-only` targets
+> `VincyZhang/Mooncake:main`. Every Linux CI job except `build-wheel-xpu`
+> is commented out, including the normal CI gate and path/style prerequisites.
+> The macOS PR trigger is also commented out. The reusable XPU workflow is
+> unchanged: its own host tests, wheel smoke check and native artifact checks
+> still run. Restore the commented CI configuration before merging this branch.
+> `ci/xpu-stage-1` retains the full CI configuration described below.
+
 Implements [RFC #5036](https://github.com/kvcache-ai/Mooncake/issues/5036)
 in three stages:
 
