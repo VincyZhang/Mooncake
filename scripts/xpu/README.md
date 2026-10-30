@@ -7,8 +7,8 @@ nightly hardware/application coverage (Stage 3).
 
 ## Runner contract
 
-Register dedicated, isolated, **non-root, ephemeral** runners with labels
-`self-hosted, Linux, X64, xpu`. PR code executes inside the runtime container;
+Register dedicated, isolated, **non-root, ephemeral** runners with the `xpu`
+label (`runs-on: xpu`). PR code executes inside the runtime container;
 do not place credentials, other tenants, or persistent trusted workloads on
 these runners. Destroy/reimage the runner after each job. Docker access is
 host administration capability: container flags are not a substitute for this
@@ -55,6 +55,16 @@ Intel's native runtime is resolved from that image's Python prefix; no SYCL or
 Level Zero runtime is added to the Mooncake wheel.
 
 ## Trigger and revision binding
+
+On this **fork-only validation branch**, PR CI directly runs the XPU-only
+script tests, hosted builder, hardware core and strict gate for
+`VincyZhang/Mooncake:ci/xpu-stage-2-only`. This is restricted to that exact
+same-repository branch; unrelated Linux jobs and the macOS PR trigger are
+commented out. No normal CI gate is synthesized. The original Stage 2 branch
+is unchanged, and this temporary isolation must not be merged upstream.
+The normal-CI path/gate wiring regression is not selected because the normal
+job graph is deliberately commented out; XPU packaging and core tests remain
+required. See the [fork validation notes](../ci/README-xpu.md).
 
 After these workflows are available on upstream `main`, a maintainer with
 write/maintain/admin permission can add `run-xpu-ci` to an open PR targeting

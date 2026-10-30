@@ -1,24 +1,32 @@
 # Intel XPU CI
 
-> **Temporary fork-only validation:** `ci/xpu-wheel-only` targets
-> `VincyZhang/Mooncake:main`. Every Linux CI job except `build-wheel-xpu`
-> is commented out, including the normal CI gate and path/style prerequisites.
-> The macOS PR trigger is also commented out. The reusable XPU workflow is
-> unchanged: its own host tests, wheel smoke check and native artifact checks
-> still run. Restore the commented CI configuration before merging this branch.
-> `ci/xpu-stage-1` retains the full CI configuration described below.
+> **Temporary fork-only validation:** `ci/xpu-stage-2-only` targets
+> `VincyZhang/Mooncake:main` and merges fork PR #1 before adding Stage 2 CI.
+> All unrelated Linux jobs and the macOS PR trigger remain commented out.
+> Only XPU script regressions, the hosted XPU wheel/native bundle builder,
+> the hardware core (`runs-on: xpu`) and a strict XPU-only gate run.
+> PR metadata automation is unchanged. Do not merge this validation branch;
+> `stage-2` retains the normal CI configuration.
+>
+> Hardware runs automatically only for this exact same-repository fork branch,
+> or a manual dispatch on it. Foreign fork PRs cannot select the runner through
+> this temporary entry point. The production maintainer-label controller is
+> unchanged; it cannot be bootstrapped from an unmerged workflow on `main`.
+> This fork-only CI entry point avoids that bootstrap problem without modifying
+> the fork's default branch or granting write tokens to the hardware container.
+> See [Stage 2 runner setup and coverage](../xpu/README.md).
 
 Implements [RFC #5036](https://github.com/kvcache-ai/Mooncake/issues/5036)
 in three stages:
 
-1. **Hosted builds and packaging (this change).** Build on an Ubuntu 24.04
+1. **Hosted builds and packaging (inherited from PR #1).** Build on an Ubuntu 24.04
    CPU runner using a pinned Intel PyTorch job container, oneAPI DPC++ 2026.1 and
    CPython 3.12. Build native TENT, Store and EP, package the distinct
    `mooncake-transfer-engine-xpu` wheel, run host-only C++ tests and verify a
    clean wheel installation. Relevant PR updates/main pushes and the nightly
    workflow invoke the same reusable builder. `CI Gate` and `nightly-gate`
    require its success. This is **not GPU coverage**.
-2. **Hardware core.** Provision isolated two-GPU B60 allocations; add the
+2. **Hardware core (this validation).** Provision isolated two-GPU B60 allocations; add the
    maintainer-only `run-xpu-ci`/manual trigger for an exact PR head SHA.
    Consume the matching wheel and native bundle, then run non-RDMA C++
    platform/transport/engine/IPC, Store C++/Python and synthetic native EP

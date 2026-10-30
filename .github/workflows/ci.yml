@@ -1,4 +1,4 @@
-name: 'Build Wheel Only (XPU validation)'
+name: 'XPU Stage 2 Only (fork validation)'
 
 on:
   push:
@@ -31,9 +31,42 @@ env:
   # other PRs and would evict the main entries every PR reads.
   SCCACHE_GHA_RW_MODE: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && 'READ_WRITE' || 'READ_ONLY' }}
 
-# Temporary fork validation: retain only the XPU wheel workflow.
+# Temporary fork validation: retain only XPU scripts, build, hardware and gate.
 # Restore the commented jobs before merging into an integration branch.
 jobs:
+  xpu-script-tests:
+    if: &fork-xpu-validation >-
+      github.repository == 'VincyZhang/Mooncake' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.head.ref == 'ci/xpu-stage-2-only') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/ci/xpu-stage-2-only'))
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install XPU script test dependency
+        run: python -m pip install pyyaml
+      - name: Run XPU-only script regressions
+        # The normal CI path/gate wiring test is intentionally not selected:
+        # those jobs are commented out for this fork-only validation.
+        run: |
+          python -m unittest -v \
+            scripts.ci.tests.test_xpu_ci.HostReportTest \
+            scripts.ci.tests.test_xpu_ci.BuildDirectoryTest \
+            scripts.ci.tests.test_xpu_ci.WheelVariantTest \
+            scripts.ci.tests.test_xpu_ci.InstalledWheelTest \
+            scripts.ci.tests.test_xpu_ci.NativeBundleTest \
+            scripts.ci.tests.test_xpu_ci.WorkflowTest.test_uses_rocm_style_container_without_docker_or_orchestration_scripts \
+            scripts.ci.tests.test_xpu_core \
+            scripts.ci.tests.test_xpu_fork_ci
+
 #   # Build the artifact tested below through the exact release wheel path. The
 #   # Ubuntu jobs remain consumer tests, not an alternate wheel build environment.
 #   build-wheel:
@@ -665,7 +698,65 @@ jobs:
   build-wheel-xpu:
     # needs: [spell-check, clang-format, check-paths]
     # if: needs.check-paths.outputs.xpu == 'true'
+    needs: xpu-script-tests
+    if: *fork-xpu-validation
     uses: ./.github/workflows/ci_xpu.yml
+    with:
+      checkout_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  xpu-hardware-core:
+    needs: build-wheel-xpu
+    if: *fork-xpu-validation
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/integration-test-xpu.yml
+    with:
+      checkout_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      source_sha: ${{ needs.build-wheel-xpu.outputs.source_sha }}
+      artifact_id: ${{ needs.build-wheel-xpu.outputs.artifact_id }}
+      artifact_digest: ${{ needs.build-wheel-xpu.outputs.artifact_digest }}
+
+  xpu-validation-gate:
+    name: XPU Fork Validation Gate
+    needs: [xpu-script-tests, build-wheel-xpu, xpu-hardware-core]
+    if: >-
+      always() && github.repository == 'VincyZhang/Mooncake' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.head.ref == 'ci/xpu-stage-2-only') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/ci/xpu-stage-2-only'))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Require all XPU results for the current head
+        uses: actions/github-script@v7
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        with:
+          script: |
+            const needs = JSON.parse(process.env.NEEDS_JSON);
+            const sha = process.env.EXPECTED_SHA;
+            const failures = Object.entries(needs)
+              .filter(([, job]) => job.result !== 'success')
+              .map(([name, job]) => `${name}: ${job.result}`);
+            if (needs['build-wheel-xpu'].outputs.source_sha !== sha) {
+              failures.push('Built SHA differs from the selected head');
+            }
+            if (context.payload.pull_request) {
+              const {data: pr} = await github.rest.pulls.get({
+                ...context.repo, pull_number: context.payload.pull_request.number
+              });
+              if (pr.head.sha !== sha) failures.push('PR head changed; rerun required');
+            }
+            const summary = failures.length ? failures.join('\n') :
+              `XPU scripts, wheel, non-RDMA C++, Store and native EP passed on ${sha}`;
+            await core.summary.addRaw(summary).write();
+            if (failures.length) core.setFailed(summary);
 
 #   tent-ci:
 #     needs: [spell-check, clang-format, check-paths]
