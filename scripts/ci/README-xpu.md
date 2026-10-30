@@ -85,6 +85,19 @@ It is mutually exclusive with the other wheel build variants.
 
 ## Artifacts and hardware handoff
 
+The fork-only PR workflow runs the hosted build, exact-artifact hardware
+consumer and a strict head/build-SHA-bound gate. Only XPU jobs are active;
+unrelated Linux jobs and the macOS PR trigger remain commented out.
+The label/manual E2E controller is not triggered by an ordinary PR update;
+do not apply `run-e2e-ci` for this isolated validation.
+
+All fork and shared regressions are in `tests/test_xpu_ci.py`. The CI step
+excludes only the normal-CI wiring assertion, whose target jobs are deliberately
+commented out; authorization, artifact/result and cleanup failures remain tested.
+Docker launch/cleanup is inline in `integration-test-xpu.yml`, and the existing
+`scripts/e2e/python/verify_xpu_wheel.py` supplies all wheel/artifact/hardware
+verification modes. No standalone XPU runtime helpers are retained.
+
 Each successful run uploads one uniquely named artifact containing the wheel,
 `native-tests.tar.gz`, `SHA256SUMS` and provenance. Consumers
 must use the returned artifact ID/digest, verify the expected source SHA and

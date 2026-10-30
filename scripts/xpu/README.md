@@ -77,31 +77,43 @@ same-repository branch; unrelated Linux jobs and the macOS PR trigger are
 commented out. No normal CI gate is synthesized. The original Stage 2 branch
 is unchanged, and this temporary isolation must not be merged upstream.
 The normal-CI path/gate wiring regression is not selected because the normal
-job graph is deliberately commented out; XPU packaging and core tests remain
-required. See the [fork validation notes](../ci/README-xpu.md).
+job graph is deliberately commented out; all remaining consolidated XPU
+regressions, including E2E authorization/gate contracts, remain required.
+The E2E workflow is label/manual-only, not an automatic PR workflow; this
+validation does not add `run-e2e-ci` or start other platforms. It exercises
+the exact formal build, verifier and reusable hardware workflow through the
+fork's direct CI graph, not the upstream E2E trigger end-to-end.
+See the [fork validation notes](../ci/README-xpu.md).
 
 After these workflows are available on upstream `main`, a maintainer with
-write/maintain/admin permission can add `run-xpu-ci` to an open PR targeting
-`main`. Remove/re-add the label to rerun. A new PR head needs new authorization;
-leaving the label attached does not authorize later pushes.
+write/maintain/admin permission can add `run-e2e-ci` to an open PR targeting
+`main`. The shared **E2E CI** entry point runs XPU alongside the existing ROCm,
+Ascend and other integration jobs; XPU is required, not an optional selection.
+The existing E2E label cleanup removes the label after the gate; add it again
+to rerun. A new PR head needs new authorization; leaving the label attached
+does not authorize later pushes.
 
-Alternatively dispatch **XPU Hardware Core** on trusted `main`, supplying
-`pr_number` (current head) and optionally `checkout_sha` (must match), or a full
-40-character `checkout_sha` without a PR. No branch names or implicit latest
-artifacts are accepted. Fork PR heads are supported through their commit SHA.
+Alternatively dispatch **E2E CI** on trusted `main`, supplying `pr_number`
+(current head) and optionally `pr_sha` (must match), or a full 40-character
+`pr_sha` without a PR. With neither input, XPU tests the dispatch's `main`
+commit. No branch names or implicit latest artifacts are accepted.
+Fork PR heads are supported through their commit SHA.
 
 The hosted builder receives that exact SHA. Hardware downloads its artifact
 by ID in the same run and verifies the API identity, run/attempt, ZIP digest,
 payload/native hashes, source/image provenance, and build/runtime inventories.
 The host runs the trusted workflow-revision harness, not PR host scripts.
 
-`XPU Core Gate` requires authorization, build, hardware tests, and cleanup to
-succeed. A hosted-only job publishes the `XPU Core` check on the authorized
-commit, rechecking the PR head before success. Failed, cancelled, skipped,
-missing, or stale required results cannot pass. An interrupted controller can
-leave an in-progress check, never a successful check. This label workflow does
-not start/cancel Linux, ROCm, or other accelerator CI. The normal Stage 1
-hosted build remains independent and required by the existing CI gate.
+The shared `E2E Gate` requires XPU authorization, build, hardware tests and
+cleanup to succeed. Its hosted-only XPU step publishes the `XPU Core` check
+on the authorized commit, rechecking the PR head and build SHA before success.
+Failed, cancelled, skipped, missing or stale required XPU results cannot pass.
+The existing E2E concurrency policy cancels older runs for the same PR;
+an interrupted controller can leave an in-progress check, never a successful
+check. Other platforms retain their existing jobs and gate policy.
+The normal Stage 1 hosted build remains independent and required by the
+existing PR CI gate. Nightly still builds only the XPU artifact, without
+running XPU hardware tests.
 
 ## Required coverage and diagnostics
 
@@ -141,10 +153,22 @@ after failure or cancellation.
 CPU-only regression validation:
 
 ```sh
-python3 -m unittest discover -s scripts/ci/tests -p 'test_xpu*.py' -v
-bash -n scripts/ci/run_xpu_core.sh
+python3 -m unittest scripts.ci.tests.test_xpu_ci -v
 ```
 
-These regressions validate orchestration contracts, not actual B60 behavior.
+All XPU CI regressions share this one test module and common workflow/module
+loaders; they validate packaging and orchestration contracts, not actual B60
+behavior. Docker launch, device mapping, traps and cleanup are inline in
+`.github/workflows/integration-test-xpu.yml`. A temporary cleanup helper is
+created from that trusted workflow in the host run directory and shared by
+the exit trap and the `always()` cleanup recheck; it is not mounted into the
+test container.
+
+`scripts/e2e/python/verify_xpu_wheel.py` is the single verification entry point:
+no arguments retain the hosted wheel smoke checks; `unpack` verifies the
+downloaded artifact, `seccomp` prepares the pinned profile, and `run` installs
+the wheel offline and launches the `suite`/`store` hardware checks. There are
+no separate XPU runtime scripts under `scripts/ci/`.
+
 Enable hardware only after provisioning and successfully running the exact
 core workflow; record real queue/runtime measurements during rollout.

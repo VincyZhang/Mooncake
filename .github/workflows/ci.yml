@@ -57,15 +57,21 @@ jobs:
         # The normal CI path/gate wiring test is intentionally not selected:
         # those jobs are commented out for this fork-only validation.
         run: |
-          python -m unittest -v \
-            scripts.ci.tests.test_xpu_ci.HostReportTest \
-            scripts.ci.tests.test_xpu_ci.BuildDirectoryTest \
-            scripts.ci.tests.test_xpu_ci.WheelVariantTest \
-            scripts.ci.tests.test_xpu_ci.InstalledWheelTest \
-            scripts.ci.tests.test_xpu_ci.NativeBundleTest \
-            scripts.ci.tests.test_xpu_ci.WorkflowTest.test_uses_rocm_style_container_without_docker_or_orchestration_scripts \
-            scripts.ci.tests.test_xpu_core \
-            scripts.ci.tests.test_xpu_fork_ci
+          python - <<'PY'
+          import unittest
+          from scripts.ci.tests import test_xpu_ci
+
+          tests = unittest.defaultTestLoader.loadTestsFromModule(test_xpu_ci)
+          suite = unittest.TestSuite(
+              test for group in tests for test in group
+              if test.id() != (
+                  "scripts.ci.tests.test_xpu_ci.WorkflowTest."
+                  "test_xpu_selection_and_strict_gate_are_wired"
+              )
+          )
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(not result.wasSuccessful())
+          PY
 
 #   # Build the artifact tested below through the exact release wheel path. The
 #   # Ubuntu jobs remain consumer tests, not an alternate wheel build environment.
