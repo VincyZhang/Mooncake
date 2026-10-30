@@ -51,6 +51,9 @@ quality certification remain out of scope. Stage 1 does not add a GPU runner,
   configuration-lifecycle, six EP dispatch-slot and five CRC-32C cases; zero
   tests, missing cases, disabled cases, failures and skips fail the build.
   Update the explicit counts when intentionally adding/removing those host cases.
+- The wheel step sets `FREE_BUILD_DIR=0` to override the wheel builder's default
+  CI cleanup. The build tree must survive for auditwheel to bundle shared
+  dependencies such as `libtent_metrics.so` and for native test packaging.
 - [Wheel check](../e2e/python/verify_xpu_wheel.py): runs in a clean virtual
   environment from outside the source directory, without build-library search
   paths or a CMake installation. Installs only the produced wheel (plus its declared
