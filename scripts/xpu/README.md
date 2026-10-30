@@ -1,5 +1,15 @@
 # XPU hardware CI (Stages 2 and 3)
 
+> **Fork-only validation branch `ci/xpu-stage-3-only`: do not merge.**
+> Production Stage 3 is preserved on `stage-3` at `a7691d54`. Only this fork
+> branch comments out the normal Linux CI graph and macOS PR trigger.
+> Its automatic, same-repository PR entry runs the focused XPU regressions,
+> hosted builder with the pinned model, expanded core, and both application
+> scenarios. All four job results, exact source/artifact binding, cleanup and
+> a fresh PR head are required by `XPU Stage 3 Fork Validation Gate`.
+> It does not enable unrelated platform tests, change the normal nightly
+> administrative gate, publish packages, or claim the commented CI graph passed.
+
 Stage 1 builds a CPython 3.12 wheel and matching native tests on hosted CPU
 runners. Stage 2 consumes that exact artifact on a fixed two-B60 allocation.
 It does not build while holding GPUs or publish wheels. Stage 3 adds opt-in

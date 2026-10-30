@@ -2118,5 +2118,101 @@ class ApplicationTest(unittest.TestCase):
                 pd.run_local(args)
 
 
+class ForkStage3Test(unittest.TestCase):
+    def test_only_stage_3_xpu_jobs_are_active_and_branch_restricted(self):
+        jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+        expected = {
+            "xpu-script-tests",
+            "build-wheel-xpu",
+            "xpu-nightly-core",
+            "xpu-nightly-applications",
+            "xpu-fork-gate",
+        }
+        self.assertEqual(set(jobs), expected)
+        for job in jobs.values():
+            self.assertIn("VincyZhang/Mooncake", job["if"])
+            self.assertIn("ci/xpu-stage-3-only", job["if"])
+            self.assertIn("head.repo.full_name == github.repository", job["if"])
+        self.assertTrue(jobs["build-wheel-xpu"]["with"]["include_application_model"])
+        for name, suite in (
+            ("xpu-nightly-core", "nightly"),
+            ("xpu-nightly-applications", "applications"),
+        ):
+            job = jobs[name]
+            self.assertEqual(job["with"]["suite"], suite)
+            self.assertEqual(job["permissions"]["actions"], "read")
+            for key in ("artifact_id", "artifact_digest", "source_sha"):
+                self.assertEqual(
+                    job["with"][key], "${{ needs.build-wheel-xpu.outputs." + key + " }}"
+                )
+        macos = yaml.safe_load((ROOT / ".github/workflows/ci-macos.yml").read_text())
+        self.assertNotIn("pull_request", macos.get("on", macos.get(True)))
+        run = jobs["xpu-script-tests"]["steps"][-1]["run"]
+        for name in (
+            "NightlyXpuTest",
+            "ApplicationTest",
+            "ReportTest",
+            "ForkStage3Test",
+        ):
+            self.assertIn("scripts.ci.tests.test_xpu_ci." + name, run)
+        self.assertNotIn("test_xpu_selection_and_strict_gate_are_wired", run)
+        self.assertNotIn("unittest discover", run)
+
+    def test_gate_requires_every_job_exact_sha_and_fresh_head(self):
+        jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+        gate = jobs["xpu-fork-gate"]
+        self.assertIn("always()", gate["if"])
+        sha = "a" * 40
+        mutations = [(None, None)]
+        for job in gate["needs"]:
+            mutations += [
+                (job, status)
+                for status in ("failure", "cancelled", "skipped", "missing")
+            ]
+        mutations += [
+            ("build-wheel-xpu", "wrong-sha"),
+            ("xpu-script-tests", "wrong-sha"),
+            ("pr", "stale"),
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gh = root / "gh"
+            gh.write_text('#!/bin/sh\nprintf "%s\\n" "$CURRENT_SHA"\n')
+            gh.chmod(0o755)
+            for name, status in mutations:
+                with self.subTest(job=name, status=status):
+                    needs = {
+                        job: {"result": "success", "outputs": {"source_sha": sha}}
+                        for job in gate["needs"]
+                    }
+                    if status == "missing":
+                        del needs[name]
+                    elif status == "wrong-sha":
+                        needs[name]["outputs"]["source_sha"] = "b" * 40
+                    elif name and name != "pr":
+                        needs[name]["result"] = status
+                    result = subprocess.run(
+                        ["bash", "-ec", gate["steps"][0]["run"]],
+                        env={
+                            **os.environ,
+                            "PATH": f"{root}:{os.environ['PATH']}",
+                            "NEEDS_JSON": json.dumps(needs),
+                            "HEAD_SHA": sha,
+                            "CURRENT_SHA": "b" * 40 if name == "pr" else sha,
+                            "PR_NUMBER": "3",
+                            "GITHUB_REPOSITORY": "VincyZhang/Mooncake",
+                            "GITHUB_STEP_SUMMARY": str(root / "summary"),
+                        },
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    self.assertEqual(
+                        result.returncode == 0,
+                        name is None,
+                        result.stdout + result.stderr,
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()
