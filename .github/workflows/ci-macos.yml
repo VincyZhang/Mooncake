@@ -5,18 +5,19 @@ on:
     branches:
       - "main"
       - "release/**"
-    paths: &macos-paths
+    paths: # &macos-paths (unused while the PR trigger is commented out)
       - 'mooncake-*/**'
       - 'extern/**'
       - 'cmake/**'
       - 'CMakeLists.txt'
       - '.github/workflows/ci-macos.yml'
-  pull_request:
-    branches:
-      - "main"
-      - "release/**"
-    types: [opened, synchronize, reopened]
-    paths: *macos-paths
+  # Fork-only XPU Stage 3 validation: do not schedule unrelated macOS tests.
+  # pull_request:
+  #   branches:
+  #     - "main"
+  #     - "release/**"
+  #   types: [opened, synchronize, reopened]
+  #   paths: *macos-paths
   workflow_dispatch: {}
 
 permissions:
